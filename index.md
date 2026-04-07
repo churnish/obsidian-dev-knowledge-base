@@ -13,5 +13,3 @@ last updated: 2026-03-10
 | `electron-popout-quirks.md` | Using `document`, `window`, `ResizeObserver`, `IntersectionObserver`, or `:hover` checks in code that may run in popout windows — covers silent observer failures, stale hit-testing, and module-scope binding issues. |
 | `obsidian-api-quirks.md` | Using `vault.process()`, `vault.modify()`, `new Notice()`, Bases `config.get()` with dynamic schema defaults, or any file I/O that could race with Obsidian's debounced writes. |
 | `obsidian-review-bot.md` | Fixing bot-reported issues, adding/modifying eslint-disable comments, or preparing a PR for the Obsidian plugin review. |
-| `release-guide.md` | Running a release, bumping versions, or troubleshooting the release pipeline — documents the full npm version lifecycle, GitHub Action build, wiki publishing, and rollback procedures. |
-| `plugin-parity-spec.md` | Auditing cross-repo parity, setting up a new plugin, or verifying config consistency — documents the full spec for files, dependencies, GitHub settings, and accepted divergences. |
