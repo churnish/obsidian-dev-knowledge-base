@@ -2,7 +2,7 @@
 
 Useful undocumented properties and methods discovered through runtime inspection. These are NOT in the official API and may change without notice.
 
-For comprehensive type definitions of Obsidian's internal APIs, search `dist/types.d.ts` in the community-maintained `obsidian-typings` reference at `/Users/username/Library/Mobile Documents/com~apple~CloudDocs/obsidian-stuff/reference/unofficial/obsidian-typings/`. Contains 37K lines of typed interfaces for `App`, `DragManager`, `FileManager`, `MetadataCache`, and hundreds more.
+For comprehensive type definitions of Obsidian's internal APIs, search `dist/types.d.ts` in the community-maintained [`obsidian-typings`](https://github.com/Fevol/obsidian-typings) package. Contains 37K lines of typed interfaces for `App`, `DragManager`, `FileManager`, `MetadataCache`, and hundreds more.
 
 ## App
 
