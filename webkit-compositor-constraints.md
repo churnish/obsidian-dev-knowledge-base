@@ -1,7 +1,7 @@
 ---
 title: WebKit compositor constraints
 description: Momentum-killing APIs, scrollTop write behavior, double-rAF pattern, scrollend timing, layer promotion, scrolling-tree stale geometry during container resize, touch event suppression during momentum, touch-action railing differences, non-passive touchmove scroll blocking, mid-gesture overflow immunity, and touch-action evaluation timing — constraints for any plugin doing scroll-concurrent DOM work or touch gesture handling on iOS/iPadOS.
-author: "\U0001F916 Generated with Claude Code"
+author: 🤖 Generated with Claude Code
 updated: 2026-04-07
 ---
 # WebKit compositor constraints

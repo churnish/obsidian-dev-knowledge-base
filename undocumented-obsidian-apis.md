@@ -1,3 +1,9 @@
+---
+title: Undocumented Obsidian APIs
+description: Useful undocumented properties and methods discovered through runtime inspection.
+author: 🤖 Generated with Claude Code
+updated: 2026-04-07
+---
 # Undocumented Obsidian APIs
 
 Useful undocumented properties and methods discovered through runtime inspection. These are NOT in the official API and may change without notice.

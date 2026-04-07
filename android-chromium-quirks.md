@@ -1,7 +1,7 @@
 ---
 title: Android Chromium quirks
 description: Platform-specific quirks in Android Chromium WebView (Capacitor) affecting CSS environment variables, DOM timing, scroll behavior, and animation patterns.
-author: "\U0001F916 Generated with Claude Code"
+author: 🤖 Generated with Claude Code
 updated: 2026-03-26
 ---
 # Android Chromium quirks

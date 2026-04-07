@@ -2,7 +2,7 @@
 title: Obsidian review bot
 description: Obsidian review bot behaviors, workarounds, and common issue solutions.
 author: 🤖 Generated with Claude Code
-last updated: 2026-02-09
+updated: 2026-02-09
 ---
 # Obsidian review bot
 

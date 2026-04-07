@@ -2,7 +2,7 @@
 title: Electron popout window quirks
 description: Platform-specific quirks when running plugin code in Electron popout (BrowserWindow) windows.
 author: 🤖 Generated with Claude Code
-last updated: 2026-03-15
+updated: 2026-03-15
 ---
 
 # Electron popout window quirks

@@ -2,7 +2,7 @@
 title: Doc index
 description: Index of all cross-plugin knowledge files — when and why to read each one.
 author: 🤖 Generated with Claude Code
-last updated: 2026-03-10
+updated: 2026-04-07
 ---
 # Doc index
 
