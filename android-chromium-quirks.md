@@ -2,7 +2,7 @@
 title: Android Chromium quirks
 description: Platform-specific quirks in Android Chromium WebView (Capacitor) affecting CSS environment variables, DOM timing, scroll behavior, and animation patterns.
 author: 🤖 Generated with Claude Code
-updated: 2026-03-26
+updated: 2026-04-09
 ---
 # Android Chromium quirks
 
@@ -90,6 +90,35 @@ const boostRatio = postBoost / preBoost; // 1.0 on desktop, ~1.15+ on Android
 The probe MUST be in the DOM (appended to an in-flow element) for `getBoundingClientRect` to return a non-zero width. The `position: absolute` + `visibility: hidden` on the probe is fine — the probe itself doesn't need to be autosized, only the inherited `1em` resolution matters.
 
 **Observed**: 2026-03-25, Obsidian 1.12.7, Pixel 8a (Android 16).
+
+## `GestureFlingCancel` is unconditional
+
+Chromium synthesizes `GestureFlingCancel` before every `TapDown` in the browser process gesture recognizer (C++ level, `fling_booster.cc`), from raw OS `MotionEvent::ACTION_DOWN`. This happens before any IPC to the renderer.
+
+- **No web API can prevent it**: `touch-action`, `pointer-events`, passive listeners, and `preventDefault()` are all ineffective — the cancellation occurs before the renderer processes the touch.
+- **`pointer-events: none`** makes the touch fall through to another element, but the underlying element still receives `ACTION_DOWN` → `GestureFlingCancel`.
+- **`transform: translateY(-200%)`** also doesn't help — Chromium hit-tests `position: fixed` elements against their pre-transform layout box for compositor-level events.
+- **Practical impact**: ANY touch contact during compositor fling kills the fling. No workaround from the web layer.
+
+**Source**: [Chromium Gesture Recognizer](https://www.chromium.org/developers/design-documents/aura/gesture-recognizer/), [`fling_booster.cc`](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/events/blink/fling_booster.cc).
+
+**Observed**: 2026-04-08, Pixel 8a (Android WebView).
+
+## `touchend` `preventDefault()` does not suppress click synthesis
+
+Calling `e.preventDefault()` on `touchend` does NOT reliably suppress the synthesized `click` event that Android WebView fires ~300ms after `touchend`.
+
+**Workaround**: Register a one-time capture-phase click listener ("click-eater") that calls `stopPropagation()` + `preventDefault()`:
+
+```typescript
+element.addEventListener(
+  'click',
+  (ev) => { ev.stopPropagation(); ev.preventDefault(); },
+  { capture: true, once: true }
+);
+```
+
+**Observed**: 2026-04-08, Pixel 8a (Android WebView).
 
 ## Double-rAF unnecessary
 
