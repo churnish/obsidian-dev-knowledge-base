@@ -2,7 +2,7 @@
 title: Electron popout window quirks
 description: Platform-specific quirks when running plugin code in Electron popout (BrowserWindow) windows.
 author: 🤖 Generated with Claude Code
-updated: 2026-03-15
+updated: 2026-04-14
 ---
 
 # Electron popout window quirks
@@ -54,6 +54,55 @@ this.rafId = null;
 this.observerWindow = null;
 ```
 
+## Main-window RAF does not run before popout paint
+
+Each `BrowserWindow` has its own V8 isolate and its own frame scheduler. A `requestAnimationFrame` callback queued on the main window runs before the main window's paint — but does **not** block the popout's paint. If a `MutationObserver` detects a DOM change in a popout and defers work to main-window RAF, the popout renders one frame without the update, causing visible flicker.
+
+**Workaround**: For popout-visible DOM updates triggered by MutationObserver, process synchronously in the MO callback instead of deferring to RAF. MO already batches mutations internally, so the frequency is equivalent to RAF. Alternatively, use the popout's own RAF via `doc.defaultView.requestAnimationFrame`.
+
+```ts
+// Wrong: main-window RAF — popout paints a frame without the update
+const observer = new MutationObserver(() => {
+  requestAnimationFrame(() => updateDOM());
+});
+
+// Right: process synchronously — update is visible on the popout's next paint
+const observer = new MutationObserver(() => {
+  updateDOM();
+});
+
+// Also right: use the popout's own RAF
+const win = doc.defaultView ?? window;
+const observer = new win.MutationObserver(() => {
+  win.requestAnimationFrame(() => updateDOM());
+});
+```
+
+**Observed**: 2026-04-14, Obsidian 1.12.7
+
+## Enumerating popout documents via `floatingSplit`
+
+`app.workspace.floatingSplit.children` is an array of popout window containers. Each child has a `doc` property (the popout's `Document`) and a `win` property (its `Window`). Use this to iterate all open documents:
+
+```ts
+function getAllDocuments(): Document[] {
+  const docs: Document[] = [document];
+  const floating = (app.workspace as any).floatingSplit?.children;
+  if (floating) {
+    for (const child of floating) {
+      if (child.doc?.defaultView) docs.push(child.doc);
+    }
+  }
+  return docs;
+}
+```
+
+- **`defaultView` guard**: Filter by `child.doc?.defaultView` to exclude documents from already-closed windows. Without this, `doc.body` may be null, causing observer setup to throw.
+- **Cross-context `instanceof`**: `child.doc instanceof Document` returns `false` because the popout's `Document` is from a different V8 isolate. The object is a real `Document` — use duck typing or skip the check.
+- **Undocumented API**: `floatingSplit` is not in Obsidian's public type definitions. It has been stable across Obsidian 1.8–1.12.
+
+**Observed**: 2026-04-14, Obsidian 1.12.7
+
 ## renderHash must be invalidated on document change
 
 When a view moves between windows, `handleDocumentChange` tears down observers, but the underlying data hasn't changed. If the render pipeline uses a hash-based early return to skip redundant re-renders, the hash must be invalidated — otherwise the pipeline hits the early return, skipping observer re-creation in the new window context. CSS Grid views survive because they auto-reflow without JS; absolutely-positioned views (masonry) require explicit observer-driven layout.
@@ -70,15 +119,15 @@ After removing a DOM overlay (`cloneEl.remove()`), Electron popout windows do **
 
 **Impact**: Any code that checks `element.matches(":hover")` or waits for `mouseenter` after removing an overlaying element will get incorrect results in popouts.
 
-**Workaround**: Apply state changes (e.g., class additions) directly rather than depending on browser re-hit-testing. See `closeImageViewer()` in `image-viewer.ts` for an example.
+**Workaround**: Apply state changes (e.g., class additions) directly rather than depending on browser re-hit-testing.
 
 ## Panzoom `isAttached` check
 
-The `@panzoom/panzoom` library's `isAttached` check walks up the DOM to find `document` (module scope). In popouts, the element is in a different document, so the check fails. Workaround: temporarily reparent the container to `document.body` during init, then move it back. See `setupImageViewerGestures()` in `image-viewer.ts`.
+The `@panzoom/panzoom` library's `isAttached` check walks up the DOM to find `document` (module scope). In popouts, the element is in a different document, so the check fails. Workaround: temporarily reparent the container to `document.body` during init, then move it back.
 
 ## Event listener binding
 
-Libraries that bind event listeners to module-scope `document` (e.g., `pointermove`, `pointerup` for drag handling) will miss events in popouts since pointer events fire on the popout's document. Must rebind to the popout's document after init. See panzoom rebinding in `image-viewer.ts`.
+Libraries that bind event listeners to module-scope `document` (e.g., `pointermove`, `pointerup` for drag handling) will miss events in popouts since pointer events fire on the popout's document. Must rebind to the popout's document after init.
 
 ## `defaultView` is null after window close
 
@@ -104,7 +153,7 @@ However, module-scope `document.body` (main window) remains the canonical source
 
 ```ts
 // Right: reads from main window body (canonical source)
-const isExtMode = document.body.classList.contains('dynamic-views-file-type-ext');
+const hasSettingClass = document.body.classList.contains('my-plugin-setting');
 
 // Right: creates node in correct document context
 const textNode = cardEl.ownerDocument.createTextNode(title);
