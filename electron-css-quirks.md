@@ -2,7 +2,7 @@
 title: Electron CSS quirks
 description: Blink/Electron CSS rendering quirks affecting selectors, text truncation, overflow clipping, container queries, and GPU compositing.
 author: 🤖 Generated with Claude Code
-updated: 2026-04-03
+updated: 2026-04-14
 ---
 # Electron CSS quirks
 
@@ -58,11 +58,6 @@ Replace nested `:has()` with adjacent sibling combinator `+` plus a simple `:has
 }
 ```
 
-### Files affected by this fix
-
-- [styles/_grid-view.scss](../../styles/_grid-view.scss) — Grid properties-bottom spacing
-- [styles/_masonry-view.scss](../../styles/_masonry-view.scss) — Masonry properties-bottom spacing (both cover-bottom and non-cover variants)
-
 ## `-webkit-line-clamp` preserves trailing whitespace
 
 `-webkit-line-clamp` preserves trailing whitespace at the truncation point before appending its ellipsis. When a word boundary falls at the truncation point (common, since `word-break: break-word` prefers word boundaries), the result is `word …` instead of `word…`.
@@ -84,10 +79,6 @@ A binary-search approach was prototyped and confirmed working:
 - Mutates DOM outside the normal render pipeline
 - Doesn't survive container resize without re-render
 
-### Affected file
-
-- [styles/card/_previews.scss](../../styles/card/_previews.scss) — `.card-text-preview` uses `-webkit-line-clamp: var(--dynamic-views-text-preview-lines, 5)`
-
 ## Stuck `:hover` after drag
 
 **Discovered**: 2026-03-03 on Electron 39.5.
@@ -98,7 +89,7 @@ This is a longstanding Chromium behavior, not Electron-specific.
 
 ### Mitigation
 
-Gate visible hover effects behind a JS-managed class rather than pure `:hover`. Dynamic Views uses `.interact` (set by [hover-and-touch.ts](../../src/shared/hover-and-touch.ts) on mousemove-after-mouseenter, removed on mouseleave/dragend). Card-level CSS hover styles use `.interact` alone (class is the gate), so the stuck `:hover` has no visual effect because the class is removed in `dragend`.
+Gate visible hover effects behind a JS-managed class rather than pure `:hover`. Set the class on mousemove-after-mouseenter, remove on mouseleave/dragend. CSS hover styles use the class alone (class is the gate), so the stuck `:hover` has no visual effect because the class is removed in `dragend`.
 
 ```scss
 // Wrong: visible artifact from stuck :hover
@@ -111,11 +102,6 @@ Gate visible hover effects behind a JS-managed class rather than pure `:hover`. 
   background: var(--hover-bg);
 }
 ```
-
-### Files
-
-- [src/shared/hover-and-touch.ts](../../src/shared/hover-and-touch.ts) — `.interact` class management
-- [styles/_hover-and-touch.scss](../../styles/_hover-and-touch.scss) — Card hover/touch effects + cursor gating
 
 ## `overflow-clip-margin` ignored with per-axis `overflow-y: clip`
 
@@ -146,10 +132,6 @@ Switch to the shorthand `overflow: clip` + `overflow-clip-margin: <value>`. The 
 }
 ```
 
-### Affected file
-
-- [styles/_masonry-view.scss](../../styles/_masonry-view.scss) — `.dynamic-views-masonry` overflow and clip margin
-
 ## `@container scroll-state(stuck)` cannot style the container element
 
 **Discovered**: 2026-03-08 on Electron 39.5.
@@ -163,10 +145,6 @@ Sticky group headings need elevated `z-index` when stuck (to paint above hovered
 ### Fix
 
 JS `IntersectionObserver` + zero-height sentinel approach. A sentinel div at each group section's top is observed — when it exits the scroll viewport upward, the heading is stuck. The observer toggles a `stuck` class on the heading, which carries `z-index: 20`. The `@container scroll-state(stuck: top)` rule is retained for the bottom border (progressive enhancement on descendant `::after`).
-
-### Files
-
-- [src/bases/sticky-header.ts](../../src/bases/sticky-header.ts) — Sentinel IO observer
 
 ## `opacity` transitions trigger GPU compositing → grayscale antialiasing
 
@@ -207,12 +185,6 @@ The problem compounds when many invisible elements stack at the same position. E
 }
 ```
 
-### Affected files
-
-- [styles/_masonry-view.scss](../../styles/_masonry-view.scss) — `.card.masonry-positioned` transition, `.card:not(.masonry-positioned)` visibility
-- [styles/card/_core.scss](../../styles/card/_core.scss) — `.card.card-fade-in` animation
-- [styles/_grid-masonry-shared.scss](../../styles/_grid-masonry-shared.scss) — `.stuck` z-index rule, sentinel CSS, `@container` border rule
-
 ## `-webkit-line-clamp` ignores block margins
 
 **Discovered**: 2026-03-09 on Electron 39.5.
@@ -228,15 +200,62 @@ Related findings:
 
 ### Workaround
 
-JS per-paragraph clamping: measure each `<p>` height against a line budget, hide overflow paragraphs with `display: none`, and apply `-webkit-line-clamp` only to the last visible paragraph. See `applyClampFromMeasurements` in [text-preview-dom.ts](../../src/shared/text-preview-dom.ts).
-
-### Affected files
-
-- [src/shared/text-preview-dom.ts](../../src/shared/text-preview-dom.ts) — JS per-paragraph clamp algorithm
-- [styles/card/_previews.scss](../../styles/card/_previews.scss) — `:has(> p)` dual-path: native clamp for single-block text, `display: block` for multi-paragraph
+JS per-paragraph clamping: measure each `<p>` height against a line budget, hide overflow paragraphs with `display: none`, and apply `-webkit-line-clamp` only to the last visible paragraph.
 
 ## `display: -webkit-box` computes as `flow-root`
 
 **Discovered**: 2026-03-09 on Chrome 142 (Electron 36).
 
 `display: -webkit-box` computes to `flow-root` in Chrome 142+. Despite the different computed value, `-webkit-line-clamp` still functions correctly — the truncation and ellipsis behavior is unchanged. This is a DevTools display quirk, not a functional regression.
+
+## `-webkit-line-clamp` ellipsis eats characters on forced line breaks
+
+**Observed**: 2026-04-10, Electron 39.8.3 (Chromium 142).
+
+When `-webkit-line-clamp` truncates text that contains forced line breaks (`\n` with `white-space: pre-line`, or `<br>`), the ellipsis replaces trailing characters on the last visible line instead of appending after the text. This only occurs when the text on the last visible line is shorter than the container width — the ellipsis glyph-removal algorithm operates on the physical line box end regardless of actual text length.
+
+**Example**: With `-webkit-line-clamp: 2` and text `"Title line one\nTitle line two\nTitle line three"`, the second line renders as `"Title line tw…"` instead of `"Title line two…"` despite ample horizontal space remaining.
+
+### Platform scope
+
+| Platform | Behavior |
+|---|---|
+| **Desktop Electron** (Blink) | Characters eaten — ellipsis replaces trailing glyphs |
+| **iOS/iPadOS** (WebKit) | Correct — ellipsis appends after text |
+| **Android** (Chrome/WebView) | Correct — ellipsis appends after text |
+
+### Root cause
+
+Blink's legacy `-webkit-line-clamp` implementation reuses the `text-overflow: ellipsis` glyph-removal algorithm. That algorithm measures from the physical line box end inward to make room for the `…` glyph, removing characters as needed. When a forced `\n` break ends the line early, the algorithm still removes characters from the text end rather than recognizing that space already exists.
+
+### Attempted workarounds (all failed)
+
+- **`word-break: normal` + `overflow-wrap: normal`**: No effect — the algorithm operates on the line box end regardless of break rules.
+- **`<br>` instead of `\n`**: Same result — both are forced breaks that trigger the same code path.
+- **No CSS-only workaround exists**.
+
+### Resolution timeline
+
+The unprefixed `line-clamp` spec uses block-ellipsis placement which does not reuse the glyph-removal algorithm. Chromium tracks this behind the `css-line-clamp-line-breaking-ellipsis` flag. When shipped, the bug auto-resolves for code using `-webkit-line-clamp`.
+
+- **Tracking**: https://issues.chromium.org/issues/40336192
+- **CSSWG spec**: https://drafts.csswg.org/css-overflow-4/#propdef-line-clamp
+
+## `z-index: 0` on `.cm-line` breaks CM6 click-to-position
+
+**Observed**: 2026-04-14, Electron 39.8.3.
+
+Setting `z-index: 0` on a `.cm-line` element (to create a stacking context for child pseudo-elements) causes `caretRangeFromPoint()` to return incorrect positions when clicking past the end of text on an active (`.cm-active`) heading line. `posAtCoords` returns `lineFrom` (line start) instead of `lineTo` (line end), causing the cursor to jump to position 0.
+
+- **Clicks on text** are unaffected — correct character positions are returned.
+- **Clicks past text edge** (right of the last character) return the wrong position.
+- **The bug only manifests when the line is `.cm-active`** — first click works, second click (on the now-active line) fails.
+- **Interaction with `::before`/`::after`**: The bug is exacerbated when themes add absolutely-positioned pseudo-elements (e.g., active-line highlighting via `::before`). The combination of `z-index: 0` stacking context + pseudo-elements confuses Blink's hit-testing for `caretRangeFromPoint()`.
+
+### Fix
+
+Remove `z-index` from `.cm-line` elements entirely. If the pseudo-element is positioned in the padding area below text (no vertical overlap with text content), `z-index` layering is unnecessary — the pseudo-element and text occupy different vertical spaces regardless of stacking order.
+
+If vertical overlap IS needed (e.g., an underline overlapping text), there is no CSS-only fix. The stacking context breaks click-to-position. Alternatives:
+- **`pointer-events: none`** on the pseudo-element helps but does not fix the `caretRangeFromPoint` issue.
+- **JS-injected child elements** instead of pseudo-elements (avoids the stacking context requirement).

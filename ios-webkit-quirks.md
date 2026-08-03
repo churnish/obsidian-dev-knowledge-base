@@ -1,8 +1,8 @@
 ---
 title: iOS WebKit quirks
-description: Platform-specific bugs in iOS WebKit (WKWebView) affecting content-visibility, IntersectionObserver, CSS scroll-state(), and compositor layer shifts.
+description: Platform-specific bugs in iOS WebKit (WKWebView) affecting content-visibility, IntersectionObserver, CSS scroll-state(), compositor layer shifts, touch hit-testing, and click synthesis.
 author: 🤖 Generated with Claude Code
-updated: 2026-03-10
+updated: 2026-04-07
 ---
 
 # iOS WebKit quirks
@@ -13,7 +13,7 @@ Toggling `content-visibility: hidden` via IntersectionObserver causes an infinit
 
 **Root cause**: iOS WebKit re-evaluates IntersectionObserver entries when `content-visibility: hidden` changes an observed element's geometry. Chromium does not.
 
-**Fix**: Use `content-visibility: auto` (browser-managed) on mobile instead of IO-driven toggling. Guarded via `Platform.isMobile` in `src/shared/content-visibility.ts`.
+**Fix**: Use `content-visibility: auto` (browser-managed) on mobile instead of IO-driven toggling. Guarded via `Platform.isMobile` at the call site.
 
 **Observed**: 2026-02-11, iOS.
 
@@ -65,6 +65,31 @@ document.addEventListener('touchmove', blockTouchMove, {
 ```
 
 **Observed**: 2026-03-09, iPadOS 18.
+
+## WKWebView compositor touch routing bypasses main-thread hit-test
+
+WKWebView's compositor/scrolling thread maintains its own hit-test tree for touch routing that is **disconnected** from the main thread's hit-test tree (used by `elementFromPoint()` and synthesized clicks). A `position: fixed` element can pass `elementFromPoint()` checks on the main thread while the compositor routes the actual touch to a different element underneath.
+
+**Example**: `elementFromPoint(200, 20)` returns `.view-header-title` (inside a fixed header), but the actual `touchstart` event lands on `.masonry-container` (scroll content below). The compositor's stale hit-test tree doesn't reflect recent `classList` or style changes on fixed elements.
+
+**Implications**:
+- **`elementFromPoint()` is unreliable** for verifying touch reachability on iOS — it tests the main-thread tree, not the compositor tree.
+- **`classList` changes on `position: fixed` elements** (e.g., adding a class that changes `pointer-events`, `transform`, `opacity`) do NOT synchronously update the compositor hit-test regions. Neither `offsetHeight` flush nor `elementFromPoint()` reliably forces a compositor hit-test tree rebuild.
+- **Inline style changes** (`element.style.pointerEvents = 'auto'`) are more reliable than class-based changes for affecting compositor touch routing, though not guaranteed.
+
+**Workaround**: Control touch interception via structural properties (e.g., `min-height` to expand/collapse the layout box) rather than `pointer-events` class toggles. The compositor respects layout geometry more reliably than style-only changes.
+
+**Observed**: 2026-04-02, iOS 26.4.
+
+## WKWebView ignores `preventDefault()` on touchstart for click synthesis
+
+Calling `preventDefault()` on a non-passive `touchstart` listener (even with `capture: true`) does **NOT** prevent WKWebView from synthesizing a compatibility click event. This contradicts the spec and Chromium behavior, where `preventDefault()` on `touchstart` suppresses the entire click sequence.
+
+**Trigger**: Touch a `position: fixed` element → JS handler calls `showBarsUI()` which changes layout → WKWebView synthesizes a click ~300ms later on the original touch target (now potentially repositioned or behind other content).
+
+**Workaround**: Use `preventDefault()` on `touchend` (not `touchstart`) via a non-passive listener — this reliably suppresses click synthesis on WKWebView. Alternatively, register a one-shot capture click listener that calls `stopPropagation()` + `preventDefault()` to eat the synthesized click.
+
+**Observed**: 2026-04-02, iOS 26.4.
 
 ## iPadOS CSS cursor property
 

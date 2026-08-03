@@ -53,7 +53,7 @@ Android Chromium WebView applies "font boosting" (TextAutosizer) that inflates t
 **Fix**: Derive the boosted font-size from `1lh`:
 
 ```scss
-width: calc(1lh / var(--dynamic-views-line-height-tight));
+width: calc(1lh / var(--line-height-tight));
 ```
 
 This equals `1em` on desktop/iOS (no boosting) and the boosted font-size on Android. The formula works because `1lh` is the only font-relative unit that reflects boosted metrics, and dividing by the line-height ratio recovers the font-size.

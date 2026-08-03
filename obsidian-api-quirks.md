@@ -2,7 +2,7 @@
 title: Obsidian API quirks
 description: Undocumented Obsidian API behaviors. Covers file write timing, race conditions, Bases config quirks, and workarounds.
 author: 🤖 Generated with Claude Code
-updated: 2026-03-15
+updated: 2026-04-10
 ---
 
 # Obsidian API quirks
