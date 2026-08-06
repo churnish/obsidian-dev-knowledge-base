@@ -2,7 +2,7 @@
 title: Doc index
 description: Index of all cross-plugin knowledge files — when and why to read each one.
 author: 🤖 Generated with Claude Code
-updated: 2026-08-03
+updated: 2026-08-06
 ---
 # Doc index
 
@@ -20,3 +20,4 @@ updated: 2026-08-03
 | `webkit-compositor-constraints.md` | Doing scroll-concurrent DOM work or touch gesture handling on iOS/iPadOS — covers momentum-killing APIs, `scrollTop` write behavior, the double-rAF pattern, layer promotion, and touch-action evaluation timing. |
 | `obsidian-review-bot.md` | Fixing bot-reported issues, adding/modifying eslint-disable comments, or preparing a PR for the Obsidian plugin review. |
 | `electron-css-quirks.md` | Writing nested `:has()` selectors, working around `-webkit-line-clamp` truncation, using `opacity` transitions on text-heavy elements, or setting `z-index` on `.cm-line` elements — documents Blink/Electron CSS rendering quirks including GPU compositing antialiasing and CM6 click-to-position breakage. |
+| `obsidian-css-specificity.md` | Overriding CSS on an Obsidian-owned element, or removing `!important` from plugin styles — covers `app.css` state-class selectors that specificity cannot beat, how to identify the winning rule at runtime, and when `!important` is the correct answer. |
