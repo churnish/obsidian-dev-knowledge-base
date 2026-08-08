@@ -2,7 +2,7 @@
 title: Electron CSS quirks
 description: Blink/Electron CSS rendering quirks affecting selectors, text truncation, overflow clipping, container queries, and GPU compositing.
 author: 🤖 Generated with Claude Code
-updated: 2026-04-14
+updated: 2026-08-09
 ---
 # Electron CSS quirks
 
@@ -207,6 +207,41 @@ JS per-paragraph clamping: measure each `<p>` height against a line budget, hide
 **Discovered**: 2026-03-09 on Chrome 142 (Electron 36).
 
 `display: -webkit-box` computes to `flow-root` in Chrome 142+. Despite the different computed value, `-webkit-line-clamp` still functions correctly — the truncation and ellipsis behavior is unchanged. This is a DevTools display quirk, not a functional regression.
+
+## A flex item cannot host a `-webkit-box` line clamp
+
+**Observed**: 2026-08-08, Electron 43.1.1 (Chromium 150).
+
+Applying `display: -webkit-box` + `-webkit-box-orient: vertical` + `-webkit-line-clamp` to an element that is itself a **flex item** collapses it to **zero height**. The element disappears; the clamp never engages.
+
+Blockification is the cause — a flex item's `display` is blockified, and the legacy box cannot act as a clamp container once that happens.
+
+- **Clamp a child instead.** Move the declarations to a descendant whose parent is an ordinary block. The child is not a flex item, so the box survives and clamps normally.
+- **Forcing the child's `display` does not rescue it.** Setting the flex item's own child to `display: block` leaves the collapse in place; it is the clamp element's status as a flex item that matters, not what it contains.
+- **Nested flex descendants keep their own layout.** A flex row inside the clamped box still lays out horizontally — only the box's own line boxes are counted.
+- **A flex descendant escapes clamping entirely.** A `display: flex` child counts as a single box rather than line boxes, so the clamp has nothing to count and the element renders at full height. Give it `display: inline` to make its content participate. `inline-flex` does NOT work — it is still one box.
+- **Measure rendered height, never the computed value.** `display` reports `flow-root` either way (see above), so it cannot distinguish a working clamp from a collapsed one.
+
+Watch for a second failure mode nearby: if the clamped element is a flex item whose container is height-constrained, `flex-shrink` compresses it below the clamp — a two-line clamp renders one line. `flex-shrink: 0` fixes it.
+
+## `hyphens: auto` support varies by platform, and skips capitalized words
+
+**Observed**: 2026-08-09, Electron 43.1.1 (Chromium 150).
+
+Automatic hyphenation is not uniformly available, and where it is available it deliberately skips some words.
+
+| Platform | Mechanism | Works? |
+|---|---|---|
+| macOS | CoreText, no dictionary needed | Yes |
+| iOS | Same CoreText path via WebKit | Yes |
+| Android WebView | AOSP dictionaries at a hardcoded system path | Yes |
+| Windows, Linux | Dictionaries delivered by Chromium's component updater | **No** |
+
+- **Electron has no component updater**, and does not override the browser-client hook that supplies the dictionary directory, so Windows and Linux silently never hyphenate. The property parses and computes to `auto` regardless.
+- **Bundling the dictionary files does not help.** The directory fallback that would load them is compiled only into Chrome-for-Testing builds. No command-line switch or feature flag exists. The only route is a patched Electron build.
+- **Blink refuses to hyphenate capitalized words in `en*` locales.** This is a deliberate UA heuristic, and it makes hyphenation appear broken on Title Case headings while sentence case works. WebKit has no such rule, so the same capitalized word hyphenates on iOS but not on macOS.
+- **Probe with a lowercase, real, multi-syllable word.** A capitalized word or a synthetic string such as `aaaaaaaa` has no break points and yields a false negative. Blink also requires a minimum word length of 5 with 2-character prefix and suffix.
+- **`hyphens: manual` with soft hyphens works everywhere**, since it needs no dictionary. It is the only portable route, at the cost of soft-hyphen characters surviving into copied text.
 
 ## `-webkit-line-clamp` ellipsis eats characters on forced line breaks
 

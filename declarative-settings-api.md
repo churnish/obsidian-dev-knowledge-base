@@ -1,8 +1,8 @@
 ---
 title: Declarative settings API quirks
-description: Runtime behavior of Obsidian 1.13's getSettingDefinitions() API that the official docs don't state. Covers definition caching, refresh semantics, row reuse, search indexing, and a name collision that blanks the settings pane.
+description: Runtime behavior of Obsidian 1.13's getSettingDefinitions() API that the official docs don't state. Covers definition caching, refresh semantics, the focused-row re-render skip, definitions that render nothing, row reuse, search indexing, and a name collision that blanks the settings pane.
 author: 🤖 Generated with Claude Code
-updated: 2026-08-03
+updated: 2026-08-07
 ---
 
 # Declarative settings API quirks
@@ -37,6 +37,51 @@ The failure this produces is quiet and easy to miss: a cascade force-writes a si
 | The set of definitions changed (rows added/removed) | `update()` |
 
 A useful nuance: controls on a **freshly mounted sub-page** do re-read `getControlValue()` even though definitions aren't rebuilt. So a cascade that writes to a control on a *different* page self-corrects when the user navigates there; only same-page writes strictly require `update()`. Using `update()` for all value-writing cascades is simpler and safe.
+
+## `update()` skips the row that holds DOM focus
+
+**Observed**: 2026-08-07, Obsidian 1.13.5 (installer 1.13.4)
+
+`update()` re-runs `getSettingDefinitions()` and rebuilds rendered rows from the result — but the row containing the **currently focused element is left untouched**, presumably so a re-render can't clobber a control the user is interacting with.
+
+This is invisible until a definition's `name` or `desc` depends on state, because that is the only part `update()` would have rebuilt:
+
+| What triggered `update()` | Rebuilt? |
+|---|---|
+| A sibling row's `desc` | Yes |
+| The focused row's own `desc` | **No** |
+| The focused row's `desc`, after focus moves away and `update()` runs again | Yes |
+
+The trap is that a user clicking a control **leaves that control focused**, and the natural place to call `update()` is that control's own `setControlValue`. So a state-dependent `desc` on the very row the user just toggled is the one case that never refreshes — it stays stale for the rest of the settings session, since nothing else moves focus and re-runs `update()`.
+
+Reproduction: give a toggle a `desc` built from its own key's value, click it, and read the row's description. The stored value flips, the group `visible` predicates re-apply, and the description does not change.
+
+- **Don't make a row's own `name`/`desc` depend on that row's control value.** State the text unconditionally, or move the conditional part to a sibling row or a group the predicate can hide.
+- **A sibling row's text is safe** — cascades that reword a *different* row do rebuild.
+- Nothing here affects `visible`/`disabled`; those re-apply on the focused row normally.
+
+## Definitions with no `control`, `render`, or `action` render nothing
+
+**Observed**: 2026-08-07, Obsidian 1.13.5 (installer 1.13.4)
+
+The documentation lists "a setting with none of the above" as a valid shape, "useful for headings or static informational rows", and the typings declare a matching `SettingDefinitionEmpty`. In practice such a definition is **silently dropped** — the group renders with an empty `.setting-items` container and no error.
+
+An informational row (a call-to-action, a link to another plugin, an explanatory paragraph) therefore needs a `render` callback even when it mounts nothing but text:
+
+```ts
+{
+  name: '',
+  render: (setting) => {
+    setting.setDesc(
+      createFragment((frag) => {
+        frag.createEl('p').appendText('…');
+      })
+    );
+  },
+}
+```
+
+`setDesc()` writes into `descEl`, which the framework does clear between renders — so this avoids the accumulation problem that hand-appending to `settingEl` causes (see the render-row constraints below).
 
 ## Controls have no `onChange` — `setControlValue` is the only hook
 
@@ -126,6 +171,22 @@ Two related migration hazards when moving imperative settings UI to the declarat
 - `SettingDefinitionGroup.items` is typed `SettingGroupItem[]` = `SettingDefinition | SettingDefinitionPage`. **A group cannot contain another group or a list.** Pages *can* nest inside groups.
 - A page's `items` is `SettingDefinitionItem[]`, which does admit groups and lists.
 - `SettingDefinitionBase` has **no `icon` field**. Per-row icons require a `render` callback that inserts the icon into `setting.nameEl`.
+
+### Indented sub-settings split the section they sit in
+
+There is no "child row" concept. A cluster of settings that only applies while a parent toggle is on has to be its own sibling `type: 'group'` with a `visible` predicate, styled through `cls` to read as a continuation of the row above it.
+
+The consequence is structural: ungrouped top-level rows are rendered into implicit boxes, and a group placed among them **ends the current box**. When the sub-group is hidden, the rows before and after it stay in two separate boxes with a visible gap between them.
+
+```
+Row A ─┐
+Row B  │ box 1
+Row C ─┘
+[sub-group, hidden]     ← still ends box 1
+Row D ─── box 2         ← visually orphaned
+```
+
+Put the row that gates the sub-group **last** in its section, so nothing follows the split.
 
 ## Native lists
 

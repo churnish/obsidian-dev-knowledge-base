@@ -2,7 +2,7 @@
 title: Obsidian review bot
 description: Obsidian review bot behaviors, workarounds, and common issue solutions.
 author: 🤖 Generated with Claude Code
-updated: 2026-02-09
+updated: 2026-08-07
 ---
 # Obsidian review bot
 
@@ -40,6 +40,25 @@ All `eslint-disable` and `eslint-enable` comments must include a description aft
 ### Static style assignment (`obsidianmd/no-static-styles-assignment`)
 
 The rule catches direct property assignments like `element.style.left = 'auto'` but does NOT catch computed property access like `element.style[prop] = value`. To avoid lint errors for static assignments, move them to CSS classes instead of setting inline.
+
+### `prefer-create-el` — the suggested fix does not compile
+
+The rule's message tells you to replace `doc.createElement('div')` with `doc.win.createDiv()`. That does **not** typecheck. `createEl`/`createDiv`/`createSpan` are declared on Obsidian's `interface Node` (`obsidian.d.ts`), not on `Window`.
+
+Call them on the parent element instead — but note they **append** to that element, so they only substitute for `createElement` when the append is unconditional. Detached creation (`insertBefore`, `after`, deferred parenting, conditional append) must stay `ownerDocument.createElement`.
+
+### `prefer-active-doc` is disabled upstream
+
+As of `eslint-plugin-obsidianmd` 0.4.1 the `prefer-active-doc` rule ships as `off` in the recommended config. Bare `document` references are not flagged. This is an upstream default, not a local override — do not add a local disable for it.
+
+### `eslint --fix` coverage and per-rule scoping
+
+`--fix` autofixes a large share of `obsidianmd/*` warnings (112 of 142 in one dynamic-views pass). It is not safe to run repo-wide unscoped:
+
+- Fixes for multiple rules land at once, so unrelated files in a dirty tree get rewritten.
+- `no-global-this` autofixes are crude — it strips `as typeof globalThis` casts and rewrites `Window & typeof globalThis` to `Window & typeof window`, which compiles but reads badly.
+
+Scope every run: `npx eslint <explicit file paths> --fix --rule '{"obsidianmd/<rule>":"warn"}'`. Always re-run `tsc --noEmit` afterwards — `prefer-window-timers` changes the return type of every fixed call from `NodeJS.Timeout` to `number`.
 
 ### Unused eslint-disable directives
 
