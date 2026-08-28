@@ -1,8 +1,8 @@
 ---
 title: iOS WebKit quirks
-description: Platform-specific bugs in iOS WebKit (WKWebView) affecting content-visibility, IntersectionObserver, CSS scroll-state(), compositor layer shifts, touch hit-testing, and click synthesis.
+description: Platform-specific bugs in iOS WebKit (WKWebView) affecting content-visibility, IntersectionObserver, CSS scroll-state(), compositor layer shifts, touch hit-testing, long-press image drag, and click synthesis.
 author: 🤖 Generated with Claude Code
-updated: 2026-04-07
+updated: 2026-08-28
 ---
 
 # iOS WebKit quirks
@@ -65,6 +65,33 @@ document.addEventListener('touchmove', blockTouchMove, {
 ```
 
 **Observed**: 2026-03-09, iPadOS 18.
+
+## Long-press image drag retargets on `draggable="false"` rather than cancelling
+
+WebKit's long-press-to-drag affordance on `<img>` is a separate mechanism from HTML5 drag-and-drop, and it answers to none of the properties that switch the desktop path off. `draggable="false"` is the one that does reach it — as a redirect, not an off switch.
+
+| Property | Governs | Effect on long press |
+|---|---|---|
+| `draggable="false"` on the image | The desktop HTML5 DnD path | **Retargets** — the drag moves to the nearest draggable ancestor |
+| `-webkit-user-drag: none` | The same desktop path, via CSS | None observed |
+| `touch-action` on the image | That element's own default touch behaviour | None — neither `pan-y` nor `none` stopped `dragstart` |
+| `touch-action: none` on a container | Default touch behaviour over the container's own box | The only case the suppression was ever demonstrated for, and it does not reach descendants |
+
+**`draggable="false"` retargets, it does not cancel.** WebKit drops the image as the drag source and hands the press to the nearest draggable ancestor, which then lifts with its own payload. An image inside a draggable card therefore drags the card, and that retargeting is the fix for card images that previously lifted a bare image with nothing attached.
+
+**`touch-action` is not inherited.** A rule on a container never lands on the image the finger is actually pressing, so every container-level `touch-action` written to suppress this missed the pressed element. The container demonstration below is therefore not evidence about the image.
+
+**`setDragImage()` is accepted but ignored.** On a WebKit system-initiated drag, calling it on the event's `dataTransfer` neither throws nor changes anything — the preview stays WebKit's own snapshot of the pressed element. A custom drag ghost has to come from somewhere else.
+
+**Symptom when nothing opts out**: a long press starts a system drag and fires the drag-lift haptic, then aborts with no payload if the element has no draggable data. The user feels a vibration for a drag that never happens.
+
+**Fix**: set `draggable="false"` on the image and give the ancestor that should be dragged the payload you want lifted. `touch-action` on the image is not a substitute — measured at both `pan-y` and `none`, neither stopped `dragstart`. Obsidian's own image lightbox sets `touch-action: none` on its media container *and* `draggable="false"` at element creation; only the second of those reaches the image.
+
+**Diagnostic trap**: an ancestor's `touch-action` reads like coverage and is not. Because the property does not inherit, a grep that finds `touch-action: none` on the container and stops there reports an opt-out the image never receives. Check the rule that actually matches the pressed element.
+
+**Scope carefully.** `touch-action: none` disables *all* default touch behaviour over the box it applies to, including any long-press drag you actually want. Where a long press is a real affordance — dragging an image out into a document, for instance — the opt-out must be scoped to the modes that do not offer it.
+
+**Observed**: 2026-08-10, corrected 2026-08-28 on iOS. The original reading — `draggable` inert, `touch-action` the only property that reaches the affordance — was inferred from the host app's own suppression rather than measured. The corrections above are measured.
 
 ## WKWebView compositor touch routing bypasses main-thread hit-test
 
